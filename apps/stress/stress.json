@@ -1,6 +1,6 @@
 {
   "deviceId": "e0:55:e8:a8:28:34 random",
-  "beepThreshold": 14,
+  "beepThreshold": 20,
   "beepSince": 175000,
   "maxInterval": 180000,
   "t": {
