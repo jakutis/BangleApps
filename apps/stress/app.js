@@ -112,8 +112,8 @@ const handleDeviceData = (data) => {
   if (!beeping && duration >= config.beepSince && stress > config.beepThreshold) {
     beeping = true
     Promise.all([
-      Bangle.beep(600),
-      Bangle.buzz(600)
+      Bangle.beep(),
+      Bangle.buzz()
     ]).then(() => {beeping = false})
   }
 };
