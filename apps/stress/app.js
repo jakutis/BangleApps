@@ -132,14 +132,6 @@ const cleanup = () => {
   onExit = []
 }
 
-E.on('kill',()=> {
-  cleanup();
-});
-setWatch(() => {
-  cleanup()
-  Bangle.showLauncher()
-}, BTN2);
-
 const connect = (device) => Promise.resolve(device)
   .then(function(device) {
     inform(t.CONNECTING_TO_DEVICE)
@@ -176,4 +168,11 @@ const scan = () => new Promise(resolve => {
 
 const main = () => scan().then(connect);
 
+E.on('kill',()=> {
+  cleanup();
+});
+setWatch(() => {
+  cleanup()
+  Bangle.showLauncher()
+}, BTN2);
 main()
