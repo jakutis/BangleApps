@@ -5076,5 +5076,16 @@
       {"name":"stress.json","url":"stress.json"},
       {"name":"stress.img","url":"app-icon.js","evaluate":true}
     ]
+  },
+  {
+    "id": "hourwatch",
+    "name": "hourwatch",
+    "shortName":"hourwatch",
+    "version":"0.01",
+    "description": "Shows the current hour",
+    "tags": "",
+    "storage": [
+      {"name":"hourwatch.app.js","url":"app.js"}
+    ]
   }
 ]
