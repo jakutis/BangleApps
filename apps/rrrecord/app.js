@@ -372,12 +372,13 @@ function consumePPISamples(ppiSamples) {
     lines.push('time ' + formatTime(new Date(lastWindow.date)))
     lines.push('stress ' + lastWindow.stressIndex.toFixed(2))
     lines.push('HRV ' + lastWindow.rmssd.toFixed(2))
-    if (Date.now() - lastSave >= 5 * 60 * 1000) {
+    if (Date.now() - lastSave >= 8 * 60 * 60 * 1000) {
       lastSave = Date.now()
       const chunk = fileToSave.chunksOfGoodPPISamples.pop()
+      const window = fileToSave.windows.pop()
       storage.writeJSON(fileName, fileToSave)
       fileToSave = {
-        windows: [],
+        windows: [window],
         chunksOfGoodPPISamples: [chunk]
       }
       fileName = 'windows-' + Date.now()
