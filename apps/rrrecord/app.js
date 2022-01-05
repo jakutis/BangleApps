@@ -260,7 +260,9 @@ function takeLastWindow(ns, window) {
   return sum < window ? undefined : {ns: newNs, first: first, last: last};
 }
 function formatTime(date) {
-  return date.toISOString().slice(11, 19)
+  return [date.getHours(), date.getMinutes(), date.getSeconds()]
+    .map(n => n.toString().padStart(2, '0'))
+    .join(':')
 }
 const features = {
   nn20: rrs => nn(rrs, 20),
@@ -310,7 +312,7 @@ function consumePPISamples(ppiSamples) {
     if (isGood(p)) {
       ppiSample = p
       if (chunk.rrs.length === 0) {
-        chunk.start = new Date().toISOString()
+        chunk.start = Date.now()
       }
       chunk.rrs.push(ppiSample.ppInMs)
       if (badSamplesSinceLastChunk.length > 0) {
@@ -351,7 +353,7 @@ function consumePPISamples(ppiSamples) {
     const window = takeLastWindow(chunk.rrs, 30000)
     if (window !== undefined) {
       fileToSave.windows.push({
-        date: new Date().toISOString(),
+        date: Date.now(),
         chunk: chunk.start,
         first: window.first,
         last: window.last,
