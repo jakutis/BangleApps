@@ -5078,6 +5078,19 @@
     ]
   },
   {
+    "id": "rrrecord",
+    "name": "rrrecord",
+    "shortName":"rrrecord",
+    "version":"0.01",
+    "description": "Watch that records RR or PP intervals, currently only from Polar Verity Sense",
+    "tags": "",
+    "supports": ["BANGLEJS", "BANGLEJS2"],
+    "storage": [
+      {"name":"rrrecord.json","url":"rrrecord.json"},
+      {"name":"rrrecord.app.js","url":"app.js"}
+    ]
+  },
+  {
     "id": "hourwatch",
     "name": "hourwatch",
     "shortName":"hourwatch",
