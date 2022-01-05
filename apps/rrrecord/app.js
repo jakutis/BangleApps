@@ -296,9 +296,9 @@ const features = {
 let lastSave = 0
 let fileName = 'windows-' + Date.now()
 let fileToSave = {
-  windows: [],
   chunksOfGoodPPISamples: [{rrs: []}]
 }
+let lastWindow
 let badSamplesSinceLastChunk = []
 let previousBadSamplesSinceLastChunk = []
 function getLatestChunkOfGoodPPISamples() {
@@ -352,39 +352,35 @@ function consumePPISamples(ppiSamples) {
     lines.push(ppiSample.hr.toString() + 'bpm')
     const window = takeLastWindow(chunk.rrs, 30000)
     if (window !== undefined) {
-      fileToSave.windows.push({
+      lastWindow = {
         date: Date.now(),
-        chunk: chunk.start,
-        first: window.first,
-        last: window.last,
         stressIndex: features.stressIndex(window.ns),
         rmssd: features.rmssd(window.ns),
-      })
+      }
     }
   }
   lines.push(previousBadSamplesSinceLastChunk.length.toString() + 'i' + previousBadSamplesSinceLastChunk.slice().reverse().join('i'))
-  if (fileToSave.windows.length === 0) {
+  if (lastWindow === undefined) {
     lines.push('-')
     lines.push('-')
     lines.push('-')
   } else {
-    const lastWindow = fileToSave.windows[fileToSave.windows.length - 1]
     lines.push('time ' + formatTime(new Date(lastWindow.date)))
     lines.push('stress ' + lastWindow.stressIndex.toFixed(2))
     lines.push('HRV ' + lastWindow.rmssd.toFixed(2))
-    if (Date.now() - lastSave >= 8 * 60 * 60 * 1000) {
+    if (Date.now() - lastSave >= 4 * 60 * 60 * 1000) {
       lastSave = Date.now()
       const chunk = fileToSave.chunksOfGoodPPISamples.pop()
-      const window = fileToSave.windows.pop()
       storage.writeJSON(fileName, fileToSave)
       fileToSave = {
-        windows: [window],
         chunksOfGoodPPISamples: [chunk]
       }
       fileName = 'windows-' + Date.now()
     }
   }
-  lines.push('' + process.memory().free)
+  const mem = process.memory()
+  const freeBytes = mem.blocksize * mem.free
+  lines.push(freeBytes + 'b free')
 
   g.reset();
   g.setColor(backgroundColor)
