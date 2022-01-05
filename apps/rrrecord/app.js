@@ -2,6 +2,8 @@ const storage = require("Storage");
 
 const config = storage.readJSON("rrrecord.json")
 const t = config.t
+const WINDOW_DURATION = 30000
+const SAVE_INTERVAL = 4 * 60 * 60 * 1000
 
 const decode = (data) => {
   // ported from https://github.com/polarofficial/polar-ble-sdk/blob/master/sources/Android/android-communications/src/main/java/com/androidcommunications/polar/api/ble/model/gatt/client/BleHrClient.java
@@ -293,7 +295,7 @@ const features = {
   },
   stressIndex: stressIndex,
 }
-let lastSave = 0
+let lastSave = Date.now()
 let fileName = 'windows-' + Date.now()
 let fileToSave = {
   chunksOfGoodPPISamples: [{rrs: []}]
@@ -350,7 +352,7 @@ function consumePPISamples(ppiSamples) {
     const chunk = getLatestChunkOfGoodPPISamples()
     lines.push(formatTime(new Date()) + ' ' + formatDurationInSeconds(sum(chunk.rrs)))
     lines.push(ppiSample.hr.toString() + 'bpm')
-    const window = takeLastWindow(chunk.rrs, 30000)
+    const window = takeLastWindow(chunk.rrs, WINDOW_DURATION)
     if (window !== undefined) {
       lastWindow = {
         date: Date.now(),
@@ -368,9 +370,10 @@ function consumePPISamples(ppiSamples) {
     lines.push('time ' + formatTime(new Date(lastWindow.date)))
     lines.push('stress ' + lastWindow.stressIndex.toFixed(2))
     lines.push('HRV ' + lastWindow.rmssd.toFixed(2))
-    if (Date.now() - lastSave >= 4 * 60 * 60 * 1000) {
+    if (Date.now() - lastSave >= SAVE_INTERVAL) {
       lastSave = Date.now()
       const chunk = fileToSave.chunksOfGoodPPISamples.pop()
+      fileToSave.chunksOfGoodPPISamples = fileToSave.chunksOfGoodPPISamples.filter(chunk => takeLastWindow(chunk.rrs, WINDOW_DURATION) !== undefined)
       storage.writeJSON(fileName, fileToSave)
       fileToSave = {
         chunksOfGoodPPISamples: [chunk]
