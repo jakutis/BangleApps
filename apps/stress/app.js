@@ -126,7 +126,7 @@ const inform = message => {
   g.flip();
 }
 
-const onExit = []
+let onExit = []
 const cleanup = () => {
   onExit.forEach(f => {try{f()}catch(e){}})
   onExit = []
