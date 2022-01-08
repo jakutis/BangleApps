@@ -3,7 +3,7 @@ const storage = require("Storage");
 const config = storage.readJSON("rrrecord.json")
 const t = config.t
 const WINDOW_DURATION = 30000
-const MAX_RRS_COUNT = 8 * 1024
+const MAX_RRS_COUNT = 4 * 1024
 
 const decode = (data) => {
   // ported from https://github.com/polarofficial/polar-ble-sdk/blob/master/sources/Android/android-communications/src/main/java/com/androidcommunications/polar/api/ble/model/gatt/client/BleHrClient.java
@@ -446,6 +446,11 @@ read
 */
 
 let running = false
+process.on('uncaughtException', err => {
+  cleanup()
+  running = false
+  storage.writeJSON('rrrecord-error-C-' + Date.now(), errorToString(err))
+})
 const run = () => findDevice().then(connectPMDNotifications).catch(err => {
   cleanup()
   running = false
