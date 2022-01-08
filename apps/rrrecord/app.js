@@ -3,7 +3,7 @@ const storage = require("Storage");
 const config = storage.readJSON("rrrecord.json")
 const t = config.t
 const WINDOW_DURATION = 30000
-const SAVE_INTERVAL = 4 * 60 * 60 * 1000
+const MAX_RRS_COUNT = 8 * 1024
 
 const decode = (data) => {
   // ported from https://github.com/polarofficial/polar-ble-sdk/blob/master/sources/Android/android-communications/src/main/java/com/androidcommunications/polar/api/ble/model/gatt/client/BleHrClient.java
@@ -83,13 +83,12 @@ const inform = message => {
   g.flip();
 }
 
-const onExit = []
+let onExit = []
 const cleanup = () => {
   onExit.forEach(f => {try{f()}catch(e){}})
   onExit = []
 }
 
-// START
 const getPPISamples = (buffer) => {
   const data = []
   for (let i = 0; i < buffer.length; i++) {
@@ -149,6 +148,7 @@ const connectPMDNotifications = (device) => Promise.resolve(device).then(functio
       maxInterval: 1000
     }).then(gatt => ({gatt: gatt, device: device}));
   }).then(function(ctx) {
+    onExit.push(() => ctx.gatt.disconnect())
     console.log('RETRIEVING_SERVICE');
     return ctx.gatt.getPrimaryService('fb005c80-02e7-f387-1cad-8acd2d8df0c8').then(service => Object.assign({}, ctx, {service: service}));
   }).then(function(ctx) {
@@ -167,7 +167,16 @@ const connectPMDNotifications = (device) => Promise.resolve(device).then(functio
     return ctx.service.getCharacteristic('fb005c82-02e7-f387-1cad-8acd2d8df0c8').then(notificationsCharacteristic => Object.assign({}, ctx, {notificationsCharacteristic: notificationsCharacteristic}))
   }).then(function(ctx) {
     console.log('REQUESTING_FOR_DATA');
-    ctx.notificationsCharacteristic.on('characteristicvaluechanged', e => consumePPISamples(getPPISamples(e.target.value.buffer)), false);
+    onExit.push(() => ctx.notificationsCharacteristic.stopNotifications())
+    ctx.notificationsCharacteristic.on('characteristicvaluechanged', e => {
+      try {
+        consumePPISamples(getPPISamples(e.target.value.buffer))
+      } catch (err) {
+        cleanup()
+        running = false
+        storage.writeJSON('rrrecord-error-B-' + Date.now(), errorToString(err))
+      }
+    }, false);
     return ctx.notificationsCharacteristic.startNotifications().then(() => ctx);
   })
 const sqr = x => x * x
@@ -300,6 +309,7 @@ let fileName = 'windows-' + Date.now()
 let fileToSave = {
   chunksOfGoodPPISamples: [{rrs: []}]
 }
+const getRRSCountToSave = () => fileToSave.chunksOfGoodPPISamples.reduce((count, c) => count + c.rrs.length, 0)
 let lastWindow
 let badSamplesSinceLastChunk = []
 let previousBadSamplesSinceLastChunk = []
@@ -370,10 +380,9 @@ function consumePPISamples(ppiSamples) {
     lines.push('time ' + formatTime(new Date(lastWindow.date)))
     lines.push('stress ' + lastWindow.stressIndex.toFixed(2))
     lines.push('HRV ' + lastWindow.rmssd.toFixed(2))
-    if (Date.now() - lastSave >= SAVE_INTERVAL) {
+    if (getRRSCountToSave() > MAX_RRS_COUNT) {
       lastSave = Date.now()
       const chunk = fileToSave.chunksOfGoodPPISamples.pop()
-      fileToSave.chunksOfGoodPPISamples = fileToSave.chunksOfGoodPPISamples.filter(chunk => takeLastWindow(chunk.rrs, WINDOW_DURATION) !== undefined)
       storage.writeJSON(fileName, fileToSave)
       fileToSave = {
         chunksOfGoodPPISamples: [chunk]
@@ -396,15 +405,20 @@ function consumePPISamples(ppiSamples) {
   Bangle.drawWidgets();
 }
 //Bangle.setUI("clock");
-const scan = () => new Promise(resolve => {
+const findDevice = () => new Promise(resolve => {
   NRF.setScan();
   console.log('LOOKING_FOR_DEVICE');
   NRF.setScan(d => {
     NRF.setScan();
     resolve(d)
-  }, { filters: [{id: config.deviceId}], timeout: 20000});
+  }, { filters: [{id: config.deviceId}] });
 });
-// FINISH
+const errorToString = error => {
+  if (!error || typeof error !== 'object') {
+    return String(error)
+  }
+  return 'Message=' + String(error.message) + '; Stack=' + String(error.stack)
+}
 
 //PmdMeasurementType_PPI = 3
 //PmdControlPointCommand_REQUEST_MEASUREMENT_START = 2
@@ -431,7 +445,19 @@ read
 // reply: 0f 6e 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00
 */
 
-const main = () => scan().then(connectPMDNotifications);
+let running = false
+const run = () => findDevice().then(connectPMDNotifications).catch(err => {
+  cleanup()
+  running = false
+  storage.writeJSON('rrrecord-error-A-' + Date.now(), errorToString(err))
+})
+const checkIfRunning = () => {
+  if (!running) {
+    running = true
+    run()
+  }
+  setTimeout(checkIfRunning, 1000)
+}
 
 /*
 E.on('kill',()=> {
@@ -446,4 +472,4 @@ setWatch(() => {
 Bangle.loadWidgets();
 Bangle.setUI("clock");
 g.clear();
-main()
+checkIfRunning()
