@@ -44,7 +44,7 @@ let beeping = false
 
 const handleDeviceData = (data) => {
   rrs.push.apply(rrs, data.rrs)
-  duration += data.rrs.reduce((sum, rr) => sum + rr, 0)
+  duration += sum(data.rrs)
   while (duration >= config.maxInterval) {
     duration -= rrs.shift()
   }
@@ -180,11 +180,10 @@ const connectPMDNotifications = (device) => Promise.resolve(device).then(functio
     return ctx.notificationsCharacteristic.startNotifications().then(() => ctx);
   })
 const sqr = x => x * x
-const mean = xs => xs.reduce((sum, x) => sum + x, 0) / xs.length
+const mean = xs => sum(xs) / xs.length
 const sd = xs => {
   const av = mean(xs)
-  const sum = xs.reduce((sum, x) => sum + sqr(x - av), 0)
-  return Math.sqrt(sum / (xs.length - 1))
+  return Math.sqrt(sum(xs.map(x => sqr(x - av))) / (xs.length - 1))
 }
 function isGood(ppiSample) {
   return ppiSample.blockerBit !== 1 && ppiSample.ppErrorEstimate <= 30
@@ -298,18 +297,14 @@ const features = {
     out.SI = (out.AMo * 100) / (2 * (out.Mo / 1000) * (out.MxDMn / 1000))
     return Math.sqrt(out.SI)
   },
-  rmssd: rrs => {
-    const sum = deltas(rrs).reduce((sum, d) => sum + sqr(d), 0)
-    return Math.sqrt(sum / rrs.length)
-  },
+  rmssd: rrs => Math.sqrt(sum(deltas(rrs).map(sqr)) / rrs.length),
   stressIndex: stressIndex,
 }
-let lastSave = Date.now()
 let fileName = 'windows-' + Date.now()
 let fileToSave = {
   chunksOfGoodPPISamples: [{rrs: []}]
 }
-const getRRSCountToSave = () => fileToSave.chunksOfGoodPPISamples.reduce((count, c) => count + c.rrs.length, 0)
+const getRRSCountToSave = () => sum(fileToSave.chunksOfGoodPPISamples.map(c => c.rrs.length))
 let lastWindow
 let badSamplesSinceLastChunk = []
 let previousBadSamplesSinceLastChunk = []
@@ -381,7 +376,6 @@ function consumePPISamples(ppiSamples) {
     lines.push('stress ' + lastWindow.stressIndex.toFixed(2))
     lines.push('HRV ' + lastWindow.rmssd.toFixed(2))
     if (getRRSCountToSave() > MAX_RRS_COUNT) {
-      lastSave = Date.now()
       const chunk = fileToSave.chunksOfGoodPPISamples.pop()
       storage.writeJSON(fileName, fileToSave)
       fileToSave = {
