@@ -10,7 +10,7 @@ const appendJSONLine = (filename, json) => {
   const file = storage.open(filename, 'a')
   file.write(JSON.stringify(json) + '\n')
 }
-const logToFile = (type, text) => appendJSONLine('rrrecord.log', {date: new Date().toISOString(), type, text})
+const logToFile = (type, text) => appendJSONLine('rrrecord-log', {date: new Date().toISOString(), type, text})
 
 const decode = (data) => {
   // ported from https://github.com/polarofficial/polar-ble-sdk/blob/master/sources/Android/android-communications/src/main/java/com/androidcommunications/polar/api/ble/model/gatt/client/BleHrClient.java
