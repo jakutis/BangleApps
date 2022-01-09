@@ -308,7 +308,7 @@ const features = {
   stressIndex: stressIndex,
 }
 let fileToSave = {
-  chunksOfGoodPPISamples: [{rrs: []}]
+  chunksOfGoodPPISamples: [{rrs: [], blockerBits: []}]
 }
 const getRRSCountToSave = () => sum(fileToSave.chunksOfGoodPPISamples.map(c => c.rrs.length))
 let lastWindow
@@ -328,6 +328,7 @@ function consumePPISamples(ppiSamples) {
         chunk.start = Date.now()
       }
       chunk.rrs.push(ppiSample.ppInMs)
+      chunk.blockerBits.push(ppiSample.blockerBit)
       if (badSamplesSinceLastChunk.length > 0) {
         previousBadSamplesSinceLastChunk = badSamplesSinceLastChunk
       }
@@ -335,7 +336,7 @@ function consumePPISamples(ppiSamples) {
     } else {
       ppiSample = undefined
       if (chunk.rrs.length > 0) {
-        fileToSave.chunksOfGoodPPISamples.push({rrs: []})
+        fileToSave.chunksOfGoodPPISamples.push({rrs: [], blockerBits: []})
       }
       badSamplesSinceLastChunk.push([p.blockerBit, p.ppErrorEstimate])
     }
