@@ -5,6 +5,11 @@ const t = config.t
 const WINDOW_DURATION = 30000
 const MAX_RRS_COUNT = 4 * 1024
 
+const appendJSONLine = (filename, json) => {
+  const file = storage.open(filename, 'a')
+  file.write(JSON.stringify(json) + '\n')
+}
+
 const decode = (data) => {
   // ported from https://github.com/polarofficial/polar-ble-sdk/blob/master/sources/Android/android-communications/src/main/java/com/androidcommunications/polar/api/ble/model/gatt/client/BleHrClient.java
   let cumulative_rr = 0
@@ -141,6 +146,7 @@ Polar ppi data
   }
   throw new Error('data type is not PPI')
 }
+let lastNotification
 const connectPMDNotifications = (device) => Promise.resolve(device).then(function(device) {
     console.log('CONNECTING_TO_DEVICE')
     return device.gatt.connect({
@@ -169,12 +175,13 @@ const connectPMDNotifications = (device) => Promise.resolve(device).then(functio
     console.log('REQUESTING_FOR_DATA');
     onExit.push(() => ctx.notificationsCharacteristic.stopNotifications())
     ctx.notificationsCharacteristic.on('characteristicvaluechanged', e => {
+      lastNotification = Date.now()
       try {
         consumePPISamples(getPPISamples(e.target.value.buffer))
       } catch (err) {
         cleanup()
         running = false
-        storage.writeJSON('rrrecord-error-B-' + Date.now(), errorToString(err))
+        appendJSONLine('rrrecord-errors', {date: Date.now(), type: 'B', error: errorToString(err)})
       }
     }, false);
     return ctx.notificationsCharacteristic.startNotifications().then(() => ctx);
@@ -186,7 +193,7 @@ const sd = xs => {
   return Math.sqrt(sum(xs.map(x => sqr(x - av))) / (xs.length - 1))
 }
 function isGood(ppiSample) {
-  return ppiSample.blockerBit !== 1 && ppiSample.ppErrorEstimate <= 30
+  return ppiSample.ppErrorEstimate <= 30
 }
 function sum(ns) {
   return ns.reduce((sum, n) => {
@@ -300,7 +307,6 @@ const features = {
   rmssd: rrs => Math.sqrt(sum(deltas(rrs).map(sqr)) / rrs.length),
   stressIndex: stressIndex,
 }
-let fileName = 'windows-' + Date.now()
 let fileToSave = {
   chunksOfGoodPPISamples: [{rrs: []}]
 }
@@ -377,11 +383,10 @@ function consumePPISamples(ppiSamples) {
     lines.push('HRV ' + lastWindow.rmssd.toFixed(2))
     if (getRRSCountToSave() > MAX_RRS_COUNT) {
       const chunk = fileToSave.chunksOfGoodPPISamples.pop()
-      storage.writeJSON(fileName, fileToSave)
+      appendJSONLine('rrrecord-data', fileToSave)
       fileToSave = {
         chunksOfGoodPPISamples: [chunk]
       }
-      fileName = 'windows-' + Date.now()
     }
   }
   const mem = process.memory()
@@ -443,15 +448,21 @@ let running = false
 process.on('uncaughtException', err => {
   cleanup()
   running = false
-  storage.writeJSON('rrrecord-error-C-' + Date.now(), errorToString(err))
+  appendJSONLine('rrrecord-errors', {date: Date.now(), type: 'C', error: errorToString(err)})
 })
 const run = () => findDevice().then(connectPMDNotifications).catch(err => {
   cleanup()
   running = false
-  storage.writeJSON('rrrecord-error-A-' + Date.now(), errorToString(err))
+  appendJSONLine('rrrecord-errors', {date: Date.now(), type: 'A', error: errorToString(err)})
 })
 const checkIfRunning = () => {
+  if (lastNotification !== undefined && lastNotification + 20 * 1000 < Date.now()) {
+    cleanup()
+    running = false
+    appendJSONLine('rrrecord-errors', {date: Date.now(), type: 'D', error: errorToString(err)})
+  }
   if (!running) {
+    lastNotification = undefined
     running = true
     run()
   }
