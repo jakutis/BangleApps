@@ -2,14 +2,15 @@ const storage = require("Storage");
 
 const config = storage.readJSON("rrrecord.json")
 const t = config.t
-const WINDOW_DURATION = 30000
-const MAX_RRS_COUNT = 4 * 1024
+const WINDOW_DURATION = 30 * 1000
+const MAX_RRS_COUNT = 2 * 1024
 const NOTIFICATION_TIMEOUT = 20 * 1000
 
 const appendJSONLine = (filename, json) => {
   const file = storage.open(filename, 'a')
   file.write(JSON.stringify(json) + '\n')
 }
+const logToFile = (type, text) => appendJSONLine('rrrecord.log', {date: new Date().toISOString(), type, text})
 
 const decode = (data) => {
   // ported from https://github.com/polarofficial/polar-ble-sdk/blob/master/sources/Android/android-communications/src/main/java/com/androidcommunications/polar/api/ble/model/gatt/client/BleHrClient.java
@@ -182,7 +183,7 @@ const connectPMDNotifications = (device) => Promise.resolve(device).then(functio
       } catch (err) {
         cleanup()
         running = false
-        appendJSONLine('rrrecord-errors', {date: Date.now(), type: 'consumePPISamples', error: errorToString(err)})
+        logToFile('consumePPISamplesFailure', errorToString(err))
       }
     }, false);
     return ctx.notificationsCharacteristic.startNotifications().then(() => ctx);
@@ -450,18 +451,18 @@ let running = false
 process.on('uncaughtException', err => {
   cleanup()
   running = false
-  appendJSONLine('rrrecord-errors', {date: Date.now(), type: 'uncaught', error: errorToString(err)})
+  logToFile('uncaughtException', errorToString(err))
 })
 const run = () => findDevice().then(connectPMDNotifications).catch(err => {
   cleanup()
   running = false
-  appendJSONLine('rrrecord-errors', {date: Date.now(), type: 'run', error: errorToString(err)})
+  logToFile('runFailure', errorToString(err))
 })
 const checkIfRunning = () => {
   if (lastNotification !== undefined && lastNotification + NOTIFICATION_TIMEOUT < Date.now()) {
     cleanup()
     running = false
-    appendJSONLine('rrrecord-errors', {date: Date.now(), type: 'notification', error: 'last notification was more than ' + NOTIFICATION_TIMEOUT + 'ms ago'})
+    logToFile('notificationTimeout', 'last notification was more than ' + NOTIFICATION_TIMEOUT + 'ms ago')
   }
   if (!running) {
     lastNotification = undefined
