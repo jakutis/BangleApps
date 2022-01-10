@@ -100,31 +100,31 @@ Polar ppi data
   }
   throw new Error('data type is not PPI')
 }
-const connectPMDNotifications = (device) => Promise.resolve(device).then(function(device) {
+const connectPMDNotifications = (device) => Promise.resolve(device).then(device => {
     console.log('CONNECTING_TO_DEVICE')
     return device.gatt.connect({
       minInterval: 500,
       maxInterval: 1000
     }).then(gatt => ({gatt: gatt, device: device}));
-  }).then(function(ctx) {
+  }).then(ctx => {
     onExit.push(() => ctx.gatt.disconnect())
     console.log('RETRIEVING_SERVICE');
     return ctx.gatt.getPrimaryService('fb005c80-02e7-f387-1cad-8acd2d8df0c8').then(service => Object.assign({}, ctx, {service: service}));
-  }).then(function(ctx) {
+  }).then(ctx => {
     console.log('RETRIEVING_CHARACTERISTIC for a request');
     return ctx.service.getCharacteristic("fb005c81-02e7-f387-1cad-8acd2d8df0c8").then(requestCharacteristic => Object.assign({}, ctx, {requestCharacteristic: requestCharacteristic}))
-  }).then(function(ctx) {
+  }).then(ctx => {
     let packet = new Uint8Array(2)
     packet[0]=2
     packet[1]=3
     return ctx.requestCharacteristic.writeValue(packet).then(() => ctx)
-  }).then(function(ctx) {
+  }).then(ctx => {
     console.log('RETRIEVING_CHARACTERISTIC for notifications');
 
     // TODO for requesting ppi streaming, get all characteristics and choose, or try to use this characteristic immediately
     //    val PMD_CP: UUID = UUID.fromString("FB005C81-02E7-F387-1CAD-8ACD2D8DF0C8")
     return ctx.service.getCharacteristic('fb005c82-02e7-f387-1cad-8acd2d8df0c8').then(notificationsCharacteristic => Object.assign({}, ctx, {notificationsCharacteristic: notificationsCharacteristic}))
-  }).then(function(ctx) {
+  }).then(ctx => {
     console.log('REQUESTING_FOR_DATA');
     onExit.push(() => ctx.notificationsCharacteristic.stopNotifications())
     ctx.notificationsCharacteristic.on('characteristicvaluechanged', e => {
@@ -145,20 +145,10 @@ const sd = xs => {
   const av = mean(xs)
   return Math.sqrt(sum(xs.map(x => sqr(x - av))) / (xs.length - 1))
 }
-function isGood(ppiSample) {
-  return ppiSample.ppErrorEstimate <= 30
-}
-function sum(ns) {
-  return ns.reduce((sum, n) => {
-    return sum + n
-  }, 0)
-}
-function last(ns) {
-  return ns[ns.length - 1]
-}
-function formatDurationInSeconds(duration) {
-  return (duration / 1000).toFixed(1) + 's'
-}
+const isGood = ppiSample => ppiSample.ppErrorEstimate <= 30
+const sum = ns => ns.reduce((sum, n) => sum + n, 0)
+const last = ns => ns[ns.length - 1]
+const formatDurationInSeconds = duration => (duration / 1000).toFixed(1) + 's'
 const stressIndex = rrs => {
     const out = {}
     const sortedRrs = rrs.slice()
@@ -220,7 +210,7 @@ const deltas = xs => {
   return ds
 }
 const nn = (xs, ms) => deltas(xs).filter(d => d > ms).length
-function takeLastWindow(ns, window) {
+const takeLastWindow = (ns, window) => {
   const newNs = []
   let first
   let last = ns.length - 1
@@ -232,11 +222,9 @@ function takeLastWindow(ns, window) {
   }
   return sum < window ? undefined : {ns: newNs, first: first, last: last};
 }
-function formatTime(date) {
-  return [date.getHours(), date.getMinutes(), date.getSeconds()]
-    .map(n => n.toString().padStart(2, '0'))
-    .join(':')
-}
+const formatTime = date => [date.getHours(), date.getMinutes(), date.getSeconds()]
+  .map(n => n.toString().padStart(2, '0'))
+  .join(':')
 const features = {
   nn20: rrs => nn(rrs, 20),
   pnn20: rrs => nn(rrs, 20) / rrs.length,
@@ -264,7 +252,7 @@ const features = {
   stressIndex: stressIndex,
 }
 const getRRSCountToSave = () => sum(fileToSave.chunksOfGoodPPISamples.map(c => c.rrs.length))
-function consumePPISamples(ppiSamples) {
+const consumePPISamples = ppiSamples => {
   let ppiSample
   ppiSamples.forEach(p => {
     const chunk = last(fileToSave.chunksOfGoodPPISamples)
