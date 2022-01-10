@@ -5,109 +5,61 @@ const t = config.t
 const WINDOW_DURATION = 30 * 1000
 const MAX_RRS_COUNT = 2 * 1024
 const NOTIFICATION_TIMEOUT = 20 * 1000
+const WIDTH = 176
+const HEIGHT = 176
 
+let running = false
+const onExit = []
+let lastNotification
+let fileToSave = {
+  chunksOfGoodPPISamples: [{rrs: [], blockerBits: []}]
+}
+const metricsData = {
+  items: [],
+  lastItem: undefined
+}
+
+const ensureMaxMetricsItems = () => {
+  if (metricsData.items.length > WIDTH) {
+    metricsData.items.shift()
+  }
+}
+const metrics = {
+  count: () => metricsData.items.length,
+  skip: () => {
+    if (last(metricsData.items)) {
+      metricsData.items.push(null)
+    }
+    ensureMaxMetricsItems()
+  },
+  add: metric => {
+    metricsData.items.push(metric)
+    metricsData.lastItem = metric
+    ensureMaxMetricsItems()
+  },
+  getLast: () => metricsData.lastItem
+}
 const appendJSONLine = (filename, json) => {
   const file = storage.open(filename, 'a')
   file.write(JSON.stringify(json) + '\n')
 }
 const logToFile = (type, text) => appendJSONLine('rrrecord-log', {date: new Date().toISOString(), type, text})
-
-const decode = (data) => {
-  // ported from https://github.com/polarofficial/polar-ble-sdk/blob/master/sources/Android/android-communications/src/main/java/com/androidcommunications/polar/api/ble/model/gatt/client/BleHrClient.java
-  let cumulative_rr = 0
-  const hrFormat = data[0] & 0x01
-  const sensorContact = ((data[0] & 0x06) >> 1) === 3
-  const contactSupported = !((data[0] & 0x06) === 0)
-  const energyExpended = (data[0] & 0x08) >> 3
-  const rrPresent = ((data[0] & 0x10) >> 4) === 1
-  const polar_32bit_rr = (data[0] & 0x20) >> 5
-  const heartRate = (hrFormat === 1 ? (data[1] + (data[2] << 8)) : data[1]) & (hrFormat === 1 ? 0x0000FFFF : 0x000000FF)
-  let offset = hrFormat + 2
-  let energy = 0
-  if (energyExpended === 1) {
-    energy = (data[offset] & 0xFF) + ((data[offset + 1] & 0xFF) << 8)
-    offset += 2
-  }
-  const rrs = []
-  if (rrPresent) {
-    while (offset < data.length) {
-      const rrValue = ((data[offset] & 0xFF) + ((data[offset + 1] & 0xFF) << 8))
-      offset += 2;
-      rrs.push(rrValue);
-    }
-  } else if (polar_32bit_rr == 1 && (offset + 3) < data.length) {
-    cumulative_rr = ((data[offset] & 0xFF) + ((data[offset + 1] & 0xFF) << 8) + ((data[offset + 2] & 0xFF) << 16) + ((data[offset + 3] & 0xFF) << 24))
-  }
-  const finalCumulative_rr = cumulative_rr;
-  const finalEnergy = energy;
-  return {
-    heartRate: heartRate, sensorContact: sensorContact, energy: finalEnergy, rrs: rrs, contactSupported: contactSupported, cumulativeRR: finalCumulative_rr, rrPresent: rrPresent
-  };
-}
-
-let rrs = []
-let duration = 0
-let beeping = false
-
-const handleDeviceData = (data) => {
-  rrs.push.apply(rrs, data.rrs)
-  duration += sum(data.rrs)
-  while (duration >= config.maxInterval) {
-    duration -= rrs.shift()
-  }
-  const stress = stressIndex(rrs)
-  const stressString = String(Math.round(stress * 10) / 10)
-  const interval = t.INTERVAL + ': ' + String(Math.round(duration / 1000)) + 's'
-  const bpm = t.BPM + ': ' + String(data.heartRate) + 'bpm'
-
-  g.clear();
-  g.setFontAlign(0, 0);
-  g.setFont("Vector", 20);
-  g.drawString(interval, g.getWidth()/2, 20);
-  g.drawString(bpm, g.getWidth()/2, 40);
-  if (!isFinite(stress)) {
-    return
-  }
-  g.drawString(t.STRESS, g.getWidth()/2, 60+10);
-  g.setFont("Vector", 80);
-  g.drawString(stressString, g.getWidth()/2, g.getHeight()/2+10);
-  g.flip();
-
-  if (!beeping && duration >= config.beepSince && stress > config.beepThreshold) {
-    beeping = true
-    Promise.all([
-      Bangle.beep(),
-      Bangle.buzz()
-    ]).then(() => {beeping = false})
-  }
-};
-
-const inform = message => {
-  g.clear();
-  g.setFontAlign(0, 0);
-  g.setFont("Vector", 20);
-  g.drawString(message, g.getWidth()/2, g.getHeight()/2);
-  g.flip();
-}
-
-let onExit = []
 const cleanup = () => {
   onExit.forEach(f => {try{f()}catch(e){}})
-  onExit = []
+  onExit.length = 0
 }
-
+const convertByteArrayToUnsignedLong = (data, offset, length) => {
+  let result = 0
+  for (let i = 0; i < length; ++i) {
+    const x = data[i + offset]
+    result |= x << i * 8
+  }
+  return result
+}
 const getPPISamples = (buffer) => {
   const data = []
   for (let i = 0; i < buffer.length; i++) {
     data.push(buffer[i])
-  }
-  const convertByteArrayToUnsignedLong = (data, offset, length) => {
-    let result = 0
-    for (let i = 0; i < length; ++i) {
-      const x = data[i + offset]
-      result |= x << i * 8
-    }
-    return result
   }
   const TYPE_PPI = 3;
 
@@ -148,7 +100,6 @@ Polar ppi data
   }
   throw new Error('data type is not PPI')
 }
-let lastNotification
 const connectPMDNotifications = (device) => Promise.resolve(device).then(function(device) {
     console.log('CONNECTING_TO_DEVICE')
     return device.gatt.connect({
@@ -202,6 +153,9 @@ function sum(ns) {
     return sum + n
   }, 0)
 }
+function last(ns) {
+  return ns[ns.length - 1]
+}
 function formatDurationInSeconds(duration) {
   return (duration / 1000).toFixed(1) + 's'
 }
@@ -212,7 +166,7 @@ const stressIndex = rrs => {
     out.binsAmo = binsSorted(sortedRrs, 50)
     out.AMo = max(out.binsAmo.map(a => a.count)) / rrs.length
     out.Mn = sortedRrs[0]
-    out.Mx = sortedRrs[sortedRrs.length - 1]
+    out.Mx = last(sortedRrs)
     out.MxDMn = out.Mx - out.Mn
     out.Mo = medianSorted(rrs)
     out.SI = (out.AMo * 100) / (2 * (out.Mo / 1000) * (out.MxDMn / 1000))
@@ -245,7 +199,7 @@ const medianSorted = (array) => {
 }
 const binsSorted = (array, width) => {
   const bins = []
-  for (let start = array[0]; start <= array[array.length - 1]; start += width) {
+  for (let start = array[0]; start <= last(array); start += width) {
     bins.push({
       start: start,
       end: start + width,
@@ -309,21 +263,11 @@ const features = {
   rmssd: rrs => Math.sqrt(sum(deltas(rrs).map(sqr)) / rrs.length),
   stressIndex: stressIndex,
 }
-let fileToSave = {
-  chunksOfGoodPPISamples: [{rrs: [], blockerBits: []}]
-}
 const getRRSCountToSave = () => sum(fileToSave.chunksOfGoodPPISamples.map(c => c.rrs.length))
-let lastWindow
-let badSamplesSinceLastChunk = []
-let previousBadSamplesSinceLastChunk = []
-function getLatestChunkOfGoodPPISamples() {
-  return fileToSave.chunksOfGoodPPISamples[fileToSave.chunksOfGoodPPISamples.length - 1]
-}
 function consumePPISamples(ppiSamples) {
-  //console.log('ppiSamples', ppiSamples)
   let ppiSample
   ppiSamples.forEach(p => {
-    const chunk = getLatestChunkOfGoodPPISamples()
+    const chunk = last(fileToSave.chunksOfGoodPPISamples)
     if (isGood(p)) {
       ppiSample = p
       if (chunk.rrs.length === 0) {
@@ -331,24 +275,16 @@ function consumePPISamples(ppiSamples) {
       }
       chunk.rrs.push(ppiSample.ppInMs)
       chunk.blockerBits.push(ppiSample.blockerBit)
-      if (badSamplesSinceLastChunk.length > 0) {
-        previousBadSamplesSinceLastChunk = badSamplesSinceLastChunk
-      }
-      badSamplesSinceLastChunk = []
     } else {
       ppiSample = undefined
       if (chunk.rrs.length > 0) {
         fileToSave.chunksOfGoodPPISamples.push({rrs: [], blockerBits: []})
       }
-      badSamplesSinceLastChunk.push([p.blockerBit, p.ppErrorEstimate])
     }
   })
-  if (badSamplesSinceLastChunk === 1) {
-    // TODO modify that one bad one by interpolating?
-  }
 
   const topLeft = {x: 0, y: 0}
-  const bottomRight = {x: 176, y: 176}
+  const bottomRight = {x: WIDTH, y: HEIGHT}
   const dimensions = {
     x: (bottomRight.x - topLeft.x),
     y: (bottomRight.y - topLeft.y),
@@ -362,28 +298,28 @@ function consumePPISamples(ppiSamples) {
   if (ppiSample === undefined) {
     lines.push(formatTime(new Date()))
     lines.push(badSamplesSinceLastChunk.length.toString() + 'i' + badSamplesSinceLastChunk.slice().reverse().join('i'))
+    metrics.skip()
   } else {
-    const chunk = getLatestChunkOfGoodPPISamples()
+    const chunk = last(fileToSave.chunksOfGoodPPISamples)
     lines.push(formatTime(new Date()) + ' ' + formatDurationInSeconds(sum(chunk.rrs)))
     lines.push(ppiSample.hr.toString() + 'bpm')
     const window = takeLastWindow(chunk.rrs, WINDOW_DURATION)
-    if (window !== undefined) {
-      lastWindow = {
+    if (window === undefined) {
+      metrics.skip()
+    } else {
+      metrics.add({
         date: Date.now(),
         stressIndex: features.stressIndex(window.ns),
         rmssd: features.rmssd(window.ns),
-      }
+      })
     }
   }
-  lines.push(previousBadSamplesSinceLastChunk.length.toString() + 'i' + previousBadSamplesSinceLastChunk.slice().reverse().join('i'))
-  if (lastWindow === undefined) {
-    lines.push('-')
-    lines.push('-')
-    lines.push('-')
-  } else {
-    lines.push('time ' + formatTime(new Date(lastWindow.date)))
-    lines.push('stress ' + lastWindow.stressIndex.toFixed(2))
-    lines.push('HRV ' + lastWindow.rmssd.toFixed(2))
+  lines.push('metrics ' + metrics.count())
+  const lastMetric = metrics.getLast()
+  if (lastMetric) {
+    lines.push('time ' + formatTime(new Date(lastMetric.date)))
+    lines.push('stress ' + lastMetric.stressIndex.toFixed(2))
+    lines.push('HRV ' + lastMetric.rmssd.toFixed(2))
     if (getRRSCountToSave() > MAX_RRS_COUNT) {
       const chunk = fileToSave.chunksOfGoodPPISamples.pop()
       appendJSONLine('rrrecord-data', fileToSave)
@@ -391,6 +327,10 @@ function consumePPISamples(ppiSamples) {
         chunksOfGoodPPISamples: [chunk]
       }
     }
+  } else {
+    lines.push('-')
+    lines.push('-')
+    lines.push('-')
   }
   const mem = process.memory()
   const freeBytes = mem.blocksize * mem.free
@@ -406,7 +346,6 @@ function consumePPISamples(ppiSamples) {
   })
   Bangle.drawWidgets();
 }
-//Bangle.setUI("clock");
 const findDevice = () => new Promise(resolve => {
   NRF.setScan();
   console.log('LOOKING_FOR_DEVICE');
@@ -422,32 +361,6 @@ const errorToString = error => {
   return 'Message=' + String(error.message) + '; Stack=' + String(error.stack)
 }
 
-//PmdMeasurementType_PPI = 3
-//PmdControlPointCommand_REQUEST_MEASUREMENT_START = 2
-
-/*
-# after getPPICharacteristic
-let packet = new Uint8Array(2)
-packet[0]=2
-packet[1]=3
-characteristic.writeValue(packet).then(a => console.log('resp', a))
-
-# pushing from bangle to browser
-http://forum.espruino.com/conversations/336567/
-
-# bluetootctl
-connect A0:9E:1A:8C:CC:5C
-menu gatt
-select-attribute fb005c81-02e7-f387-1cad-8acd2d8df0c8
-notify on
-attribute-info
-write 0x02 0x03
-// reply: f0 02 3f 02
-read
-// reply: 0f 6e 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-*/
-
-let running = false
 process.on('uncaughtException', err => {
   cleanup()
   running = false
@@ -471,16 +384,6 @@ const checkIfRunning = () => {
   }
   setTimeout(checkIfRunning, 1000)
 }
-
-/*
-E.on('kill',()=> {
-  cleanup();
-});
-setWatch(() => {
-  cleanup()
-  Bangle.showLauncher()
-}, BTN2);
-*/
 
 Bangle.loadWidgets();
 Bangle.setUI("clock");
