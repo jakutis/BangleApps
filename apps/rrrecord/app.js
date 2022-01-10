@@ -8,9 +8,9 @@ const WIDTH = 176
 const HEIGHT = 176
 
 let running = false
-const onExit = []
 let lastNotification
-let fileToSave = {
+const onExit = []
+const fileToSave = {
   chunksOfGoodPPISamples: [{rrs: [], blockerBits: []}]
 }
 const metricsData = {
@@ -42,7 +42,7 @@ const appendJSONLine = (filename, json) => {
   const file = storage.open(filename, 'a')
   file.write(JSON.stringify(json) + '\n')
 }
-const logToFile = (type, text) => appendJSONLine('rrrecord-log', {date: new Date().toISOString(), type, text})
+const logToFile = (type, text) => appendJSONLine('rrrecord-log', {date: new Date().toISOString(), type: type, text: text})
 const cleanup = () => {
   onExit.forEach(f => {try{f()}catch(e){}})
   onExit.length = 0
@@ -310,9 +310,8 @@ const consumePPISamples = ppiSamples => {
     if (getRRSCountToSave() > MAX_RRS_COUNT) {
       const chunk = fileToSave.chunksOfGoodPPISamples.pop()
       appendJSONLine('rrrecord-data', fileToSave)
-      fileToSave = {
-        chunksOfGoodPPISamples: [chunk]
-      }
+      fileToSave.chunksOfGoodPPISamples.length = 1
+      fileToSave.chunksOfGoodPPISamples.push(chunk)
     }
   } else {
     lines.push('-')
