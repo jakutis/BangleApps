@@ -1,9 +1,8 @@
 const storage = require("Storage");
 
 const config = storage.readJSON("rrrecord.json")
-const t = config.t
 const WINDOW_DURATION = 30 * 1000
-const MAX_RRS_COUNT = 2 * 1024
+const MAX_RRS_COUNT = 1024
 const NOTIFICATION_TIMEOUT = 20 * 1000
 const WIDTH = 176
 const HEIGHT = 176
@@ -285,7 +284,7 @@ const consumePPISamples = ppiSamples => {
   const lines = []
   if (ppiSample === undefined) {
     lines.push(formatTime(new Date()))
-    lines.push(badSamplesSinceLastChunk.length.toString() + 'i' + badSamplesSinceLastChunk.slice().reverse().join('i'))
+    lines.push('-')
     metrics.skip()
   } else {
     const chunk = last(fileToSave.chunksOfGoodPPISamples)
@@ -348,12 +347,6 @@ const errorToString = error => {
   }
   return 'Message=' + String(error.message) + '; Stack=' + String(error.stack)
 }
-
-process.on('uncaughtException', err => {
-  cleanup()
-  running = false
-  logToFile('uncaughtException', errorToString(err))
-})
 const run = () => findDevice().then(connectPMDNotifications).catch(err => {
   cleanup()
   running = false
@@ -373,6 +366,11 @@ const checkIfRunning = () => {
   setTimeout(checkIfRunning, 1000)
 }
 
+process.on('uncaughtException', err => {
+  cleanup()
+  running = false
+  logToFile('uncaughtException', errorToString(err))
+})
 Bangle.loadWidgets();
 Bangle.setUI("clock");
 g.clear();
