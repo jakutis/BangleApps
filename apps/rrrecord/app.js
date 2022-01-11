@@ -12,9 +12,9 @@ let fileSizes
 try {
   fileSizes = storage.readJSON("rrrecord-files")
 } catch (err) {
-  fileSizes = {}
-  storage.writeJSON("rrrecord-files", fileSizes)
 }
+fileSizes = fileSizes || {}
+storage.writeJSON("rrrecord-files", fileSizes)
 let cumulativeDuration
 let running = false
 let lastNotification
