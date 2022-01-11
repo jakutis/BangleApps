@@ -8,6 +8,13 @@ const WIDTH = 176
 const HEIGHT = 176
 const MAX_DIFF = 2000
 
+let fileSizes
+try {
+  fileSizes = storage.readJSON("rrrecord-files")
+} catch (err) {
+  fileSizes = {}
+  storage.writeJSON("rrrecord-files", fileSizes)
+}
 let cumulativeDuration
 let running = false
 let lastNotification
@@ -43,7 +50,10 @@ const metrics = {
 }
 const appendJSONLine = (filename, json) => {
   const file = storage.open(filename, 'a')
-  file.write(JSON.stringify(json) + '\n')
+  const string = JSON.stringify(json) + '\n'
+  file.write(string)
+  fileSizes[filename] = (fileSizes[filename] || 0) + string.length
+  storage.writeJSON("rrrecord-files", fileSizes)
 }
 const logToFile = (type, text) => appendJSONLine('rrrecord-log', {date: new Date().toISOString(), type: type, text: text})
 const cleanup = () => {
@@ -316,7 +326,7 @@ const consumePPISamples = (ppiSamples, startTime) => {
       })
     }
   }
-  lines.push('metrics ' + metrics.count())
+  lines.push('file ' + fileSizes['rrrecord-data'])
   const lastMetric = metrics.getLast()
   if (lastMetric) {
     lines.push('time ' + formatTime(new Date(lastMetric.date)))
