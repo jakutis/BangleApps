@@ -6,10 +6,13 @@ const MAX_RRS_COUNT = 1024
 const NOTIFICATION_TIMEOUT = 20 * 1000
 const WIDTH = 176
 const HEIGHT = 176
+const MAX_DIFF = 2000
 
+let cumulativeDuration
 let running = false
 let lastNotification
 const onExit = []
+let previousHeartTimeOffset
 const fileToSave = {
   chunksOfGoodPPISamples: [{rrs: [], blockerBits: []}]
 }
@@ -126,10 +129,13 @@ const connectPMDNotifications = (device) => Promise.resolve(device).then(device 
   }).then(ctx => {
     console.log('REQUESTING_FOR_DATA');
     onExit.push(() => ctx.notificationsCharacteristic.stopNotifications())
+    const startTime = Date.now()
+    cumulativeDuration = 0
+    previousHeartTimeOffset = undefined
     ctx.notificationsCharacteristic.on('characteristicvaluechanged', e => {
       lastNotification = Date.now()
       try {
-        consumePPISamples(getPPISamples(e.target.value.buffer))
+        consumePPISamples(getPPISamples(e.target.value.buffer), startTime)
       } catch (err) {
         cleanup()
         running = false
@@ -251,7 +257,16 @@ const features = {
   stressIndex: stressIndex,
 }
 const getRRSCountToSave = () => sum(fileToSave.chunksOfGoodPPISamples.map(c => c.rrs.length))
-const consumePPISamples = ppiSamples => {
+const consumePPISamples = (ppiSamples, startTime) => {
+  cumulativeDuration += sum(ppiSamples.map(s => s.ppInMs))
+  const heartTimeOffset = cumulativeDuration - (Date.now() - startTime)
+  if (previousHeartTimeOffset === undefined || Math.abs(previousHeartTimeOffset - heartTimeOffset) > MAX_DIFF) {
+    if (last(fileToSave.chunksOfGoodPPISamples).rrs.length > 0) {
+      fileToSave.chunksOfGoodPPISamples.push({rrs: [], blockerBits: []})
+    }
+  }
+  previousHeartTimeOffset = heartTimeOffset
+
   let ppiSample
   ppiSamples.forEach(p => {
     const chunk = last(fileToSave.chunksOfGoodPPISamples)
