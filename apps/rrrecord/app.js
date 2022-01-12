@@ -10,17 +10,12 @@ const MAX_DIFF = 2000
 
 let retriesLeft = 10
 let fileSizes
-try {
-  fileSizes = storage.readJSON("rrrecord-files")
-} catch (err) {
-}
-fileSizes = fileSizes || {}
-storage.writeJSON("rrrecord-files", fileSizes)
 let cumulativeDuration
 let lastNotification
 let running = false
-const onExit = []
+let onExit = []
 let previousHeartTimeOffset
+
 const fileToSave = {
   chunksOfGoodPPISamples: [{rrs: [], blockerBits: []}]
 }
@@ -320,8 +315,7 @@ const consumePPISamples = (ppiSamples, startTime) => {
     if (getRRSCountToSave() > MAX_RRS_COUNT) {
       const chunk = fileToSave.chunksOfGoodPPISamples.pop()
       appendJSONLine('rrrecord-data', fileToSave)
-      fileToSave.chunksOfGoodPPISamples.length = 1
-      fileToSave.chunksOfGoodPPISamples.push(chunk)
+      fileToSave.chunksOfGoodPPISamples = [ chunk ]
     }
   } else {
     lines.push('-')
@@ -341,7 +335,7 @@ const renderLines = (lines) => {
     y: (bottomRight.y - topLeft.y),
   }
   const fontSize = dimensions.x * 0.11
-  const margin = {top: 25, left: 5}
+  const margin = {top: 24, left: 5}
   const backgroundColor = '#FFFFFF'
   const fontColor = '#000000'
   g.reset();
@@ -374,7 +368,7 @@ const run = () => findDevice().then(connectPMDNotifications).catch(err => {
 })
 const stop = () => {
   onExit.forEach(f => {try{f()}catch(e){}})
-  onExit.length = 0
+  onExit = []
   running = false
 }
 const checkIfRunning = () => {
@@ -397,6 +391,12 @@ const checkIfRunning = () => {
   setTimeout(checkIfRunning, 1000)
 }
 
+try {
+  fileSizes = storage.readJSON("rrrecord-files")
+} catch (err) {
+}
+fileSizes = fileSizes || {}
+storage.writeJSON("rrrecord-files", fileSizes)
 Bangle.on('touch', () => {
   Bangle.buzz()
   retriesLeft = 10
@@ -408,4 +408,5 @@ process.on('uncaughtException', err => {
 Bangle.loadWidgets();
 Bangle.setUI("clock");
 g.clear();
+Bangle.drawWidgets();
 checkIfRunning()
