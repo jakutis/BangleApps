@@ -8,6 +8,7 @@ const WIDTH = 176
 const HEIGHT = 176
 const MAX_DIFF = 2000
 
+let retriesLeft = 10
 let fileSizes
 try {
   fileSizes = storage.readJSON("rrrecord-files")
@@ -16,8 +17,8 @@ try {
 fileSizes = fileSizes || {}
 storage.writeJSON("rrrecord-files", fileSizes)
 let cumulativeDuration
-let running = false
 let lastNotification
+let running = false
 const onExit = []
 let previousHeartTimeOffset
 const fileToSave = {
@@ -56,10 +57,6 @@ const appendJSONLine = (filename, json) => {
   storage.writeJSON("rrrecord-files", fileSizes)
 }
 const logToFile = (type, text) => appendJSONLine('rrrecord-log', {date: new Date().toISOString(), type: type, text: text})
-const cleanup = () => {
-  onExit.forEach(f => {try{f()}catch(e){}})
-  onExit.length = 0
-}
 const convertByteArrayToUnsignedLong = (data, offset, length) => {
   let result = 0
   for (let i = 0; i < length; ++i) {
@@ -147,8 +144,7 @@ const connectPMDNotifications = (device) => Promise.resolve(device).then(device 
       try {
         consumePPISamples(getPPISamples(e.target.value.buffer), startTime)
       } catch (err) {
-        cleanup()
-        running = false
+        stop()
         logToFile('consumePPISamplesFailure', errorToString(err))
       }
     }, false);
@@ -295,17 +291,6 @@ const consumePPISamples = (ppiSamples, startTime) => {
     }
   })
 
-  const topLeft = {x: 0, y: 0}
-  const bottomRight = {x: WIDTH, y: HEIGHT}
-  const dimensions = {
-    x: (bottomRight.x - topLeft.x),
-    y: (bottomRight.y - topLeft.y),
-  }
-  const fontSize = dimensions.x * 0.11
-  const margin = {top: 25, left: 5}
-  const backgroundColor = '#FFFFFF'
-  const fontColor = '#000000'
-
   const lines = []
   if (ppiSample === undefined) {
     lines.push(formatTime(new Date()))
@@ -346,7 +331,19 @@ const consumePPISamples = (ppiSamples, startTime) => {
   const mem = process.memory()
   const freeBytes = mem.blocksize * mem.free
   lines.push(freeBytes + 'b free')
-
+  renderLines(lines)
+}
+const renderLines = (lines) => {
+  const topLeft = {x: 0, y: 0}
+  const bottomRight = {x: WIDTH, y: HEIGHT}
+  const dimensions = {
+    x: (bottomRight.x - topLeft.x),
+    y: (bottomRight.y - topLeft.y),
+  }
+  const fontSize = dimensions.x * 0.11
+  const margin = {top: 25, left: 5}
+  const backgroundColor = '#FFFFFF'
+  const fontColor = '#000000'
   g.reset();
   g.setColor(backgroundColor)
   g.fillRect(topLeft.x, topLeft.y, bottomRight.x, bottomRight.y);
@@ -372,27 +369,40 @@ const errorToString = error => {
   return 'Message=' + String(error.message) + '; Stack=' + String(error.stack)
 }
 const run = () => findDevice().then(connectPMDNotifications).catch(err => {
-  cleanup()
-  running = false
+  stop()
   logToFile('runFailure', errorToString(err))
 })
+const stop = () => {
+  onExit.forEach(f => {try{f()}catch(e){}})
+  onExit.length = 0
+  running = false
+}
 const checkIfRunning = () => {
   if (lastNotification !== undefined && lastNotification + NOTIFICATION_TIMEOUT < Date.now()) {
-    cleanup()
-    running = false
+    stop()
     logToFile('notificationTimeout', 'last notification was more than ' + NOTIFICATION_TIMEOUT + 'ms ago')
   }
   if (!running) {
     lastNotification = undefined
-    running = true
-    run()
+
+    if (retriesLeft > 0) {
+      running = true
+      renderLines(['connecting', retriesLeft + ' tries left'])
+      retriesLeft--
+      run()
+    } else {
+      renderLines(['no connection', '', 'touch', 'to reconnect'])
+    }
   }
   setTimeout(checkIfRunning, 1000)
 }
 
+Bangle.on('touch', () => {
+  Bangle.buzz()
+  retriesLeft = 10
+})
 process.on('uncaughtException', err => {
-  cleanup()
-  running = false
+  stop()
   logToFile('uncaughtException', errorToString(err))
 })
 Bangle.loadWidgets();
