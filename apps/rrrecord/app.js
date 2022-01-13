@@ -10,11 +10,11 @@ const MAX_DIFF = 2000
 
 let retriesLeft = 10
 let fileSizes
-let cumulativeDuration
 let lastNotification
 let running = false
 let onExit = []
 let previousHeartTimeOffset
+let cumulativeDuration
 
 const fileToSave = {
   chunksOfGoodPPISamples: [{rrs: [], blockerBits: []}]
@@ -24,6 +24,11 @@ const metricsData = {
   lastItem: undefined
 }
 
+const save = () => {
+  const chunk = fileToSave.chunksOfGoodPPISamples.pop()
+  appendJSONLine('rrrecord-data', fileToSave)
+  fileToSave.chunksOfGoodPPISamples = [ chunk ]
+}
 const ensureMaxMetricsItems = () => {
   if (metricsData.items.length > WIDTH) {
     metricsData.items.shift()
@@ -313,9 +318,7 @@ const consumePPISamples = (ppiSamples, startTime) => {
     lines.push('stress ' + lastMetric.stressIndex.toFixed(2))
     lines.push('HRV ' + lastMetric.rmssd.toFixed(2))
     if (getRRSCountToSave() > MAX_RRS_COUNT) {
-      const chunk = fileToSave.chunksOfGoodPPISamples.pop()
-      appendJSONLine('rrrecord-data', fileToSave)
-      fileToSave.chunksOfGoodPPISamples = [ chunk ]
+      save()
     }
   } else {
     lines.push('-')
@@ -398,8 +401,9 @@ try {
 fileSizes = fileSizes || {}
 storage.writeJSON("rrrecord-files", fileSizes)
 Bangle.on('touch', () => {
-  Bangle.buzz()
   retriesLeft = 10
+  Bangle.buzz()
+  save()
 })
 process.on('uncaughtException', err => {
   stop()
